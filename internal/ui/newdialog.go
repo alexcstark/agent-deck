@@ -164,6 +164,18 @@ const (
 	remoteCreateModeAgentbox
 )
 
+type agentboxAgentChoice struct {
+	label     string
+	id        string
+	modelTool string
+}
+
+var agentboxAgentChoices = [...]agentboxAgentChoice{
+	{label: "Claude (claude-code)", id: "claude-code", modelTool: "claude"},
+	{label: "Codex (codex)", id: "codex", modelTool: "codex"},
+	{label: "Pi (pi-fireworks)", id: "pi-fireworks", modelTool: "pi-fireworks"},
+}
+
 // NewDialog represents the new session creation dialog.
 type NewDialog struct {
 	nameInput             textinput.Model
@@ -171,6 +183,9 @@ type NewDialog struct {
 	commandInput          textinput.Model
 	orchestratorInput     textinput.Model
 	agentInput            textinput.Model
+	agentPickerCursor     int
+	agentPickerActive     bool
+	agentLineOffset       int
 	modelInput            textinput.Model
 	runtimeInput          textinput.Model
 	claudeOptions         *ClaudeOptionsPanel // Claude-specific options (concrete for value extraction).
@@ -440,6 +455,8 @@ func (d *NewDialog) ShowInGroup(groupPath, groupName, defaultPath string, conduc
 	d.modelSuggestionActive = false
 	d.modelSuggestionHidden = false
 	d.modelNavigated = false
+	d.agentPickerCursor = 0
+	d.agentPickerActive = false
 	d.pathCycler.Reset()       // clear stale autocomplete matches from previous show
 	d.showRecentPicker = false // reset recent picker
 	d.recentSessionCursor = 0
@@ -674,6 +691,15 @@ func (d *NewDialog) IsModelSuggestionsActive() bool {
 	return d.modelSuggestionActive
 }
 
+// IsAgentPickerOpen reports whether the fixed Agentbox agent picker owns
+// keyboard input. Unlike model and path pickers, it has no custom-text entry
+// because the Agentbox API accepts only the canonical agent IDs below.
+func (d *NewDialog) IsAgentPickerOpen() bool {
+	return d.isAgentboxRemoteMode() &&
+		d.currentTarget() == focusAgent &&
+		d.agentPickerActive
+}
+
 // IsModelPickerOpen reports whether the model picker dropdown is currently
 // shown: focus is on the model field, the tool supports a model override, and
 // the picker has not been explicitly dismissed. The parent (home.go) uses this
@@ -694,6 +720,8 @@ func (d *NewDialog) shouldHandleEnterLocally() bool {
 	// Path/Model open their own dropdown on Enter.
 	case focusPath, focusModel:
 		return true
+	case focusAgent:
+		return d.isAgentboxRemoteMode()
 	// Name/Branch are free-text fields. When the opt-in
 	// [ui].new_session_enter_advances toggle is on, Enter advances to the next
 	// field rather than submitting the whole form: pressing Enter right after
@@ -723,7 +751,7 @@ func (d *NewDialog) WantsSubmit(msg tea.KeyMsg) bool {
 		return false
 	}
 	if d.IsRecentPickerOpen() || d.IsBranchPickerOpen() ||
-		d.suggestionsActive || d.modelSuggestionActive {
+		d.suggestionsActive || d.modelSuggestionActive || d.agentPickerActive {
 		return false
 	}
 	return true
@@ -778,6 +806,41 @@ func (d *NewDialog) ApplyHighlightedModelSuggestion() {
 func (d *NewDialog) DismissModelSuggestions() {
 	d.modelSuggestionHidden = true
 	d.modelSuggestionActive = false
+}
+
+func (d *NewDialog) openAgentPicker() {
+	d.agentPickerCursor = 0
+	currentAgent := strings.TrimSpace(d.agentInput.Value())
+	for i, choice := range agentboxAgentChoices {
+		if choice.id == currentAgent {
+			d.agentPickerCursor = i
+			break
+		}
+	}
+	d.agentPickerActive = true
+	d.agentInput.Blur()
+}
+
+func (d *NewDialog) applyAgentboxAgentChoice() {
+	if d.agentPickerCursor < 0 || d.agentPickerCursor >= len(agentboxAgentChoices) {
+		return
+	}
+	choice := agentboxAgentChoices[d.agentPickerCursor]
+	if d.agentInput.Value() != choice.id {
+		d.agentInput.SetValue(choice.id)
+		d.agentInput.SetCursor(len(choice.id))
+		d.modelInput.SetValue("")
+	}
+	d.agentPickerActive = false
+	d.modelSuggestionCursor = 0
+	d.modelSuggestionActive = false
+	d.modelSuggestionHidden = false
+	d.modelNavigated = false
+	d.filterModelSuggestions()
+}
+
+func (d *NewDialog) dismissAgentPicker() {
+	d.agentPickerActive = false
 }
 
 // SetRecentSessions sets the list of recently deleted session configs.
@@ -1075,16 +1138,13 @@ func (d *NewDialog) modelSuggestionTool() string {
 	if !d.isAgentboxRemoteMode() {
 		return d.GetSelectedCommand()
 	}
-	switch strings.ToLower(strings.TrimSpace(d.agentInput.Value())) {
-	case "claude-code":
-		return "claude"
-	case "codex":
-		return "codex"
-	case "pi-fireworks":
-		return "pi-fireworks"
-	default:
-		return ""
+	agent := strings.ToLower(strings.TrimSpace(d.agentInput.Value()))
+	for _, choice := range agentboxAgentChoices {
+		if choice.id == agent {
+			return choice.modelTool
+		}
 	}
+	return ""
 }
 
 // Show makes the dialog visible (uses default group)
@@ -1591,6 +1651,7 @@ func (d *NewDialog) updateFocus() {
 	d.pathSoftSelected = false
 	d.suggestionsActive = false
 	d.suggestionsHidden = false
+	d.agentPickerActive = false
 	d.modelSuggestionActive = false
 	d.modelSuggestionHidden = false
 	switch d.currentTarget() {
@@ -1611,7 +1672,8 @@ func (d *NewDialog) updateFocus() {
 	case focusOrchestrator:
 		d.orchestratorInput.Focus()
 	case focusAgent:
-		d.agentInput.Focus()
+		// Agentbox agents come from the fixed picker; keeping this input blurred
+		// avoids presenting a text cursor for a field that rejects free text.
 	case focusModel:
 		d.modelInput.Focus()
 	case focusRuntime:
@@ -1659,7 +1721,7 @@ func isNewDialogShiftTabKey(msg tea.KeyMsg) bool {
 // keystrokes. Single-letter shortcuts must be suppressed in this state.
 func (d *NewDialog) isTextInputFocused() bool {
 	switch d.currentTarget() {
-	case focusName, focusPath, focusOrchestrator, focusAgent, focusModel, focusRuntime, focusBranch:
+	case focusName, focusPath, focusOrchestrator, focusModel, focusRuntime, focusBranch:
 		return true
 	case focusCommand:
 		return d.commandCursor == 0 // custom command input
@@ -1768,6 +1830,40 @@ func (d *NewDialog) Update(msg tea.Msg) (*NewDialog, tea.Cmd) {
 				d.modelNavigated = true
 				// fall through to the modelSuggestionActive arrow handler below
 			}
+		}
+
+		if d.agentPickerActive && d.currentTarget() == focusAgent {
+			if isNewDialogTabKey(msg) {
+				d.dismissAgentPicker()
+				d.moveFocus(1)
+				return d, nil
+			}
+			if isNewDialogShiftTabKey(msg) {
+				d.dismissAgentPicker()
+				d.moveFocus(-1)
+				return d, nil
+			}
+			switch msg.String() {
+			case "down", "j", "ctrl+n":
+				d.agentPickerCursor = (d.agentPickerCursor + 1) % len(agentboxAgentChoices)
+				return d, nil
+			case "up", "k", "ctrl+p":
+				d.agentPickerCursor--
+				if d.agentPickerCursor < 0 {
+					d.agentPickerCursor = len(agentboxAgentChoices) - 1
+				}
+				return d, nil
+			case " ", "enter":
+				d.applyAgentboxAgentChoice()
+				if msg.String() == "enter" {
+					d.moveFocus(1)
+				}
+				return d, nil
+			case "left", "h", "esc":
+				d.dismissAgentPicker()
+				return d, nil
+			}
+			return d, nil
 		}
 
 		// Suggestions dropdown active: arrow keys navigate, space/enter select,
@@ -2177,6 +2273,10 @@ func (d *NewDialog) Update(msg tea.Msg) (*NewDialog, tea.Cmd) {
 				d.modelInput.Blur()
 				return d, nil
 			}
+			if cur == focusAgent && d.isAgentboxRemoteMode() {
+				d.openAgentPicker()
+				return d, nil
+			}
 			if cur == focusMultiRepo && d.multiRepoEnabled {
 				if d.multiRepoEditing {
 					// Save the edited path back
@@ -2372,11 +2472,8 @@ func (d *NewDialog) Update(msg tea.Msg) (*NewDialog, tea.Cmd) {
 	case focusOrchestrator:
 		d.orchestratorInput, cmd = d.orchestratorInput.Update(msg)
 	case focusAgent:
-		oldValue := d.agentInput.Value()
-		d.agentInput, cmd = d.agentInput.Update(msg)
-		if d.agentInput.Value() != oldValue {
-			d.modelSuggestionCursor = 0
-			d.filterModelSuggestions()
+		if !d.isAgentboxRemoteMode() {
+			d.agentInput, cmd = d.agentInput.Update(msg)
 		}
 	case focusModel:
 		oldValue := d.modelInput.Value()
@@ -2533,6 +2630,17 @@ func (d *NewDialog) renderModelSection(content *strings.Builder, cur focusTarget
 		content.WriteString(dimStyle.Render(hint))
 	}
 	content.WriteString("\n\n")
+}
+
+func (d *NewDialog) renderAgentboxAgentSection(content *strings.Builder, cur focusTarget, dialogWidth int) {
+	renderTextInputSection(content, cur, focusAgent, "Agent:", d.agentInput)
+
+	innerWidth := dialogWidth - 8
+	if innerWidth < 1 {
+		innerWidth = 1
+	}
+	wrapped := lipgloss.NewStyle().Width(innerWidth).Render(content.String())
+	d.agentLineOffset = lipgloss.Height(wrapped) - 1
 }
 
 func renderTextInputSection(content *strings.Builder, cur focusTarget, target focusTarget, label string, input textinput.Model) {
@@ -2770,7 +2878,7 @@ func (d *NewDialog) View() string {
 
 	if d.isAgentboxRemoteMode() {
 		renderTextInputSection(&content, cur, focusOrchestrator, "Orchestrator:", d.orchestratorInput)
-		renderTextInputSection(&content, cur, focusAgent, "Agent:", d.agentInput)
+		d.renderAgentboxAgentSection(&content, cur, dialogWidth)
 		d.renderModelSection(&content, cur, dialogWidth)
 		renderTextInputSection(&content, cur, focusRuntime, "Runtime:", d.runtimeInput)
 		d.renderSinglePathSection(&content, cur, dialogWidth)
@@ -2963,7 +3071,11 @@ func (d *NewDialog) View() string {
 			helpText = "←→ command │ w worktree │ s sandbox │ Tab next │ ^S create │ Esc cancel"
 		}
 	} else if cur == focusAgent && d.isAgentboxRemoteMode() {
-		helpText = "Use claude-code, codex, or pi-fireworks │ Tab next │ ^S create │ Esc cancel"
+		if d.agentPickerActive {
+			helpText = "↑/↓ navigate │ Space/Enter select │ Esc back │ Tab next"
+		} else {
+			helpText = "Enter choose agent (claude-code, codex, pi-fireworks) │ Tab next │ ^S create │ Esc cancel"
+		}
 	} else if cur == focusOrchestrator || cur == focusAgent || cur == focusRuntime {
 		helpText = "Tab next │ ^S create │ Esc cancel"
 	} else if cur == focusModel {
@@ -3010,6 +3122,15 @@ func (d *NewDialog) View() string {
 		overlayCol := leftCol + 1 + 4
 
 		placed = overlayDropdown(placed, suggestionsOverlay, overlayRow, overlayCol)
+	}
+
+	if agentOverlay := d.renderAgentboxAgentPicker(); agentOverlay != "" {
+		topRow, leftCol := dialogOrigin(d.width, d.height, lipgloss.Width(dialog), lipgloss.Height(dialog))
+
+		overlayRow := topRow + 1 + 2 + d.agentLineOffset
+		overlayCol := leftCol + 1 + 4
+
+		placed = overlayDropdown(placed, agentOverlay, overlayRow, overlayCol)
 	}
 
 	if modelOverlay := d.renderModelSuggestionsDropdown(); modelOverlay != "" {
@@ -3139,6 +3260,43 @@ func (d *NewDialog) renderSuggestionsDropdown() string {
 		Padding(0, 1)
 
 	return menuStyle.Render(b.String())
+}
+
+func (d *NewDialog) renderAgentboxAgentPicker() string {
+	if !d.IsAgentPickerOpen() {
+		return ""
+	}
+
+	menuBg := dropdownMenuBg()
+	choiceStyle := lipgloss.NewStyle().Foreground(ColorComment).Background(menuBg)
+	selectedStyle := lipgloss.NewStyle().Foreground(ColorCyan).Bold(true).Background(menuBg)
+
+	var b strings.Builder
+	for i, choice := range agentboxAgentChoices {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		prefix := "  "
+		style := choiceStyle
+		if i == d.agentPickerCursor {
+			prefix = "▶ "
+			style = selectedStyle
+		}
+		b.WriteString(style.Render(prefix + choice.label))
+	}
+
+	b.WriteString("\n")
+	b.WriteString(lipgloss.NewStyle().
+		Foreground(ColorBorder).
+		Background(menuBg).
+		Render(" ↑/↓ navigate │ Space/Enter select │ Esc back "))
+
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(ColorCyan).
+		Background(menuBg).
+		Padding(0, 1).
+		Render(b.String())
 }
 
 func (d *NewDialog) renderModelSuggestionsDropdown() string {

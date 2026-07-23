@@ -149,6 +149,113 @@ func TestNewDialog_AgentboxCodexUsesCodexModelCatalog(t *testing.T) {
 	}
 }
 
+func TestNewDialog_AgentboxAgentPickerShowsFixedChoicesAndDismisses(t *testing.T) {
+	d := NewNewDialog()
+	d.SetRemoteMode(session.RemoteKindAgentbox)
+	d.SetSize(100, 50)
+	d.Show()
+	d.focusIndex = d.indexOf(focusAgent)
+	d.updateFocus()
+
+	if !d.shouldHandleEnterLocally() {
+		t.Fatal("Enter on the Agentbox agent field must open the picker instead of submitting")
+	}
+	d, _ = d.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !d.IsAgentPickerOpen() {
+		t.Fatal("Agentbox agent picker should be open after Enter")
+	}
+	view := d.View()
+	for _, want := range []string{
+		"Claude (claude-code)",
+		"Codex (codex)",
+		"Pi (pi-fireworks)",
+	} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("Agentbox agent picker missing %q: %q", want, view)
+		}
+	}
+	if d.WantsSubmit(tea.KeyMsg{Type: tea.KeyCtrlS}) {
+		t.Fatal("Ctrl+S must not submit while the Agentbox agent picker is open")
+	}
+
+	d, _ = d.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if !d.IsVisible() {
+		t.Fatal("Esc should dismiss the Agentbox agent picker without closing the dialog")
+	}
+	if d.IsAgentPickerOpen() {
+		t.Fatal("Agentbox agent picker should be closed after Esc")
+	}
+	if view := d.View(); strings.Contains(view, "Claude (claude-code)") {
+		t.Fatalf("Agentbox agent picker should be hidden after Esc: %q", view)
+	}
+}
+
+func TestHome_AgentboxAgentPickerConsumesEnterAndEsc(t *testing.T) {
+	h := NewHome()
+	h.width, h.height = 100, 50
+	h.newDialog.SetRemoteMode(session.RemoteKindAgentbox)
+	h.newDialog.SetSize(100, 50)
+	h.newDialog.Show()
+	h.newDialog.focusIndex = h.newDialog.indexOf(focusAgent)
+	h.newDialog.updateFocus()
+
+	h.handleNewDialogKey(tea.KeyMsg{Type: tea.KeyEnter})
+	if !h.newDialog.IsAgentPickerOpen() {
+		t.Fatal("Home should route Enter on the Agentbox agent field into the picker")
+	}
+
+	h.handleNewDialogKey(tea.KeyMsg{Type: tea.KeyEsc})
+	if !h.newDialog.IsVisible() {
+		t.Fatal("Home should keep the new workspace dialog open when Esc dismisses the agent picker")
+	}
+	if h.newDialog.IsAgentPickerOpen() {
+		t.Fatal("Home should dismiss the Agentbox agent picker on Esc")
+	}
+}
+
+func TestNewDialog_AgentboxAgentPickerKeyboardSelectionFiltersModels(t *testing.T) {
+	d := NewNewDialog()
+	d.SetRemoteMode(session.RemoteKindAgentbox)
+	d.SetSize(100, 50)
+	d.Show()
+	d.focusIndex = d.indexOf(focusAgent)
+	d.updateFocus()
+
+	d, _ = d.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	d, _ = d.Update(tea.KeyMsg{Type: tea.KeyDown})
+	d, _ = d.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	if got := d.agentInput.Value(); got != "codex" {
+		t.Fatalf("selected Agentbox agent = %q, want codex", got)
+	}
+	if d.currentTarget() != focusModel {
+		t.Fatalf("focus after selecting Agentbox agent = %v, want focusModel", d.currentTarget())
+	}
+	if len(d.modelSuggestions) == 0 || d.modelSuggestions[0] != "gpt-5.5" {
+		t.Fatalf("Agentbox codex model suggestions = %v, want GPT catalog", d.modelSuggestions)
+	}
+	if slices.Contains(d.modelSuggestions, "claude-opus-4-8") {
+		t.Fatalf("Agentbox codex model suggestions should not contain Claude models: %v", d.modelSuggestions)
+	}
+	if got := d.GetRemoteCreateOptions().Agent; got != "codex" {
+		t.Fatalf("submitted Agentbox agent = %q, want codex", got)
+	}
+}
+
+func TestNewDialog_AgentboxAgentPickerDoesNotAcceptArbitraryText(t *testing.T) {
+	d := NewNewDialog()
+	d.SetRemoteMode(session.RemoteKindAgentbox)
+	d.Show()
+	d.focusIndex = d.indexOf(focusAgent)
+	d.updateFocus()
+
+	d, _ = d.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("reviewer")})
+
+	if got := d.agentInput.Value(); got != "" {
+		t.Fatalf("Agentbox agent field accepted arbitrary text %q", got)
+	}
+}
+
 func TestNewDialog_ModelDropdownVisibleOnFocus(t *testing.T) {
 	d := NewNewDialog()
 	d.SetDefaultTool("codex")
