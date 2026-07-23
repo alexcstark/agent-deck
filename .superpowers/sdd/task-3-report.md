@@ -17,4 +17,5 @@ Verification:
 - `go test ./internal/ui -run 'Test(Issue1353_AgentboxRemoteDialog|NewDialog_AgentboxAgentPicker|Home_AgentboxAgentPicker)' -count=1` — passed.
 - `git diff --check` — passed.
 
-The broader `go test ./internal/ui -count=1` run was stopped after it entered unrelated long-running Agent Deck tests; the focused picker and existing AgentBox dialog coverage passed.
+- `go test ./internal/ui -count=1` — passed (76.301s).
+- `go test ./... -count=1` — failed in unrelated pre-existing areas: `cmd/agent-deck` cgroup wiring, `internal/session` transcript/socket tests, `internal/testutil` bootstrap cleanup, `internal/tmux` bootstrap/control-client tests, and `internal/watcher` Gmail renewal. The changed `internal/ui` package passed within that run.
