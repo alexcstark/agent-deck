@@ -1049,7 +1049,7 @@ func preselectDefaultModel(config *session.UserConfig, tool string) string {
 }
 
 func (d *NewDialog) filterModelSuggestions() {
-	all := knownModelIDsForTool(d.GetSelectedCommand())
+	all := knownModelIDsForTool(d.modelSuggestionTool())
 	query := strings.ToLower(strings.TrimSpace(d.modelInput.Value()))
 	if query == "" {
 		d.modelSuggestions = all
@@ -1064,6 +1064,26 @@ func (d *NewDialog) filterModelSuggestions() {
 	}
 	if d.modelSuggestionCursor > len(d.modelSuggestions) {
 		d.modelSuggestionCursor = 0
+	}
+}
+
+// modelSuggestionTool returns the catalog key for the model field. Agentbox
+// remotes have their own agent field instead of using the local command picker;
+// using the local command here would leave the model catalog stuck on whatever
+// local tool was last selected.
+func (d *NewDialog) modelSuggestionTool() string {
+	if !d.isAgentboxRemoteMode() {
+		return d.GetSelectedCommand()
+	}
+	switch strings.ToLower(strings.TrimSpace(d.agentInput.Value())) {
+	case "claude-code":
+		return "claude"
+	case "codex":
+		return "codex"
+	case "pi-fireworks":
+		return "pi-fireworks"
+	default:
+		return ""
 	}
 }
 
@@ -2352,7 +2372,12 @@ func (d *NewDialog) Update(msg tea.Msg) (*NewDialog, tea.Cmd) {
 	case focusOrchestrator:
 		d.orchestratorInput, cmd = d.orchestratorInput.Update(msg)
 	case focusAgent:
+		oldValue := d.agentInput.Value()
 		d.agentInput, cmd = d.agentInput.Update(msg)
+		if d.agentInput.Value() != oldValue {
+			d.modelSuggestionCursor = 0
+			d.filterModelSuggestions()
+		}
 	case focusModel:
 		oldValue := d.modelInput.Value()
 		d.modelInput, cmd = d.modelInput.Update(msg)

@@ -3,6 +3,7 @@ package ui
 import (
 	"os"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -130,6 +131,21 @@ func TestNewDialog_ModelSuggestions_FilterAndSelectCodex(t *testing.T) {
 	// focus to the Path field (previously Worktree).
 	if d.currentTarget() != focusPath {
 		t.Fatalf("currentTarget after accepting model = %v, want focusPath", d.currentTarget())
+	}
+}
+
+func TestNewDialog_AgentboxCodexUsesCodexModelCatalog(t *testing.T) {
+	d := NewNewDialog()
+	d.SetDefaultTool("claude")
+	d.SetRemoteMode(session.RemoteKindAgentbox)
+	d.agentInput.SetValue("codex")
+	d.filterModelSuggestions()
+
+	if len(d.modelSuggestions) == 0 || d.modelSuggestions[0] != "gpt-5.5" {
+		t.Fatalf("Agentbox codex model suggestions = %v, want GPT catalog", d.modelSuggestions)
+	}
+	if slices.Contains(d.modelSuggestions, "claude-opus-4-8") {
+		t.Fatalf("Agentbox codex model suggestions should not contain Claude models: %v", d.modelSuggestions)
 	}
 }
 
