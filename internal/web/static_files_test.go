@@ -170,7 +170,6 @@ func TestCreateSessionDialogUsesModelIDCatalog(t *testing.T) {
 		"gpt-5.6-sol",
 		"gpt-5.6-terra",
 		"gpt-5.6-luna",
-		"accounts/fireworks/models/glm-5p2",
 		"gpt-5.5",
 		"gpt-5.4",
 		"gpt-5.4-mini",
