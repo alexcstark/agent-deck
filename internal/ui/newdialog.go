@@ -1020,6 +1020,8 @@ func knownModelIDsForTool(tool string) []string {
 	switch {
 	case session.IsClaudeCompatible(tool):
 		return []string{
+			"claude-fable-5",
+			"claude-fable-5[1m]",
 			"claude-sonnet-4-6",
 			"claude-opus-4-8",
 			"claude-opus-4-7",
@@ -1054,6 +1056,10 @@ func knownModelIDsForTool(tool string) []string {
 		}
 	case session.IsCodexCompatible(tool):
 		return []string{
+			"gpt-5.6",
+			"gpt-5.6-sol",
+			"gpt-5.6-terra",
+			"gpt-5.6-luna",
 			"gpt-5.5",
 			"gpt-5.5-pro",
 			"gpt-5.4",
@@ -1074,6 +1080,10 @@ func knownModelIDsForTool(tool string) []string {
 			"gpt-4o-mini",
 			"o3-pro",
 			"o3",
+		}
+	case tool == "pi-fireworks":
+		return []string{
+			"accounts/fireworks/models/glm-5p2",
 		}
 	default:
 		return nil

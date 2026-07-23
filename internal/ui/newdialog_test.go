@@ -141,12 +141,45 @@ func TestNewDialog_AgentboxCodexUsesCodexModelCatalog(t *testing.T) {
 	d.agentInput.SetValue("codex")
 	d.filterModelSuggestions()
 
-	if len(d.modelSuggestions) == 0 || d.modelSuggestions[0] != "gpt-5.5" {
+	if len(d.modelSuggestions) == 0 || d.modelSuggestions[0] != "gpt-5.6" {
 		t.Fatalf("Agentbox codex model suggestions = %v, want GPT catalog", d.modelSuggestions)
+	}
+	for _, want := range []string{"gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} {
+		if !slices.Contains(d.modelSuggestions, want) {
+			t.Fatalf("Agentbox codex model suggestions missing %q: %v", want, d.modelSuggestions)
+		}
 	}
 	if slices.Contains(d.modelSuggestions, "claude-opus-4-8") {
 		t.Fatalf("Agentbox codex model suggestions should not contain Claude models: %v", d.modelSuggestions)
 	}
+}
+
+func TestNewDialog_AgentboxAgentModelsAreCompatible(t *testing.T) {
+	for _, test := range []struct {
+		agent string
+		want  []string
+	}{
+		{agent: "claude-code", want: []string{"claude-fable-5", "claude-fable-5[1m]"}},
+		{agent: "codex", want: []string{"gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"}},
+		{agent: "pi-fireworks", want: []string{"accounts/fireworks/models/glm-5p2"}},
+	} {
+		t.Run(test.agent, func(t *testing.T) {
+			for _, want := range test.want {
+				if !slices.Contains(knownModelIDsForTool(modelSuggestionToolForAgent(test.agent)), want) {
+					t.Fatalf("known models for %s missing %q", test.agent, want)
+				}
+			}
+		})
+	}
+}
+
+func modelSuggestionToolForAgent(agent string) string {
+	for _, choice := range agentboxAgentChoices {
+		if choice.id == agent {
+			return choice.modelTool
+		}
+	}
+	return ""
 }
 
 func TestNewDialog_AgentboxAgentPickerShowsFixedChoicesAndDismisses(t *testing.T) {
@@ -231,7 +264,7 @@ func TestNewDialog_AgentboxAgentPickerKeyboardSelectionFiltersModels(t *testing.
 	if d.currentTarget() != focusModel {
 		t.Fatalf("focus after selecting Agentbox agent = %v, want focusModel", d.currentTarget())
 	}
-	if len(d.modelSuggestions) == 0 || d.modelSuggestions[0] != "gpt-5.5" {
+	if len(d.modelSuggestions) == 0 || d.modelSuggestions[0] != "gpt-5.6" {
 		t.Fatalf("Agentbox codex model suggestions = %v, want GPT catalog", d.modelSuggestions)
 	}
 	if slices.Contains(d.modelSuggestions, "claude-opus-4-8") {
