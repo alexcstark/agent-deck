@@ -49,6 +49,9 @@ const MODEL_ID_CATALOG = {
     { value: 'o3-pro', label: 'o3 Pro' },
     { value: 'o3', label: 'o3' },
   ],
+  pi: [
+    { value: 'accounts/fireworks/models/glm-5p2', label: 'GLM 5.2 (Fireworks)' },
+  ],
   gemini: [
     { value: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro preview' },
     { value: 'gemini-3.1-pro-preview-customtools', label: 'Gemini 3.1 Pro custom tools' },
