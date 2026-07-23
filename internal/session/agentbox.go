@@ -167,8 +167,7 @@ func (r *AgentboxRunner) FetchCostSummary(ctx context.Context) (*costs.RemoteCos
 
 func (r *AgentboxRunner) MeasureLatency(ctx context.Context) (time.Duration, error) {
 	start := time.Now()
-	var workspaces []agentboxWorkspace
-	if err := r.doJSON(ctx, http.MethodGet, "/v1/workspaces", nil, &workspaces); err != nil {
+	if err := r.doJSON(ctx, http.MethodGet, "/v1/health", nil, nil); err != nil {
 		return 0, err
 	}
 	return time.Since(start), nil

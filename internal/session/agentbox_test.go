@@ -70,6 +70,21 @@ func TestAgentboxRunnerFetchSessions_MapsWorkspaceFieldsAndAuth(t *testing.T) {
 	}
 }
 
+func TestAgentboxRunnerMeasureLatency_UsesHealthEndpoint(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/health" {
+			t.Fatalf("unexpected latency probe: %s %s", r.Method, r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	}))
+	defer srv.Close()
+
+	runner := NewAgentboxRunner("lab", RemoteConfig{Kind: RemoteKindAgentbox, URL: srv.URL})
+	if _, err := runner.MeasureLatency(context.Background()); err != nil {
+		t.Fatalf("MeasureLatency unexpected error: %v", err)
+	}
+}
+
 func TestAgentboxRunnerCreateSession_RequiresExplicitFields(t *testing.T) {
 	runner := NewAgentboxRunner("lab", RemoteConfig{Kind: RemoteKindAgentbox, URL: "http://127.0.0.1:1"})
 
