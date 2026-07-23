@@ -15,6 +15,8 @@ const CUSTOM_MODEL = '__custom__'
 
 const MODEL_ID_CATALOG = {
   claude: [
+    { value: 'claude-fable-5', label: 'Claude Fable 5' },
+    { value: 'claude-fable-5[1m]', label: 'Claude Fable 5 [1m]' },
     { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
     { value: 'claude-opus-4-8', label: 'Claude Opus 4.8' },
     { value: 'claude-opus-4-7', label: 'Claude Opus 4.7' },
@@ -22,6 +24,10 @@ const MODEL_ID_CATALOG = {
     { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5 pinned' },
   ],
   codex: [
+    { value: 'gpt-5.6', label: 'GPT-5.6' },
+    { value: 'gpt-5.6-sol', label: 'GPT-5.6 Sol' },
+    { value: 'gpt-5.6-terra', label: 'GPT-5.6 Terra' },
+    { value: 'gpt-5.6-luna', label: 'GPT-5.6 Luna' },
     { value: 'gpt-5.5', label: 'GPT-5.5' },
     { value: 'gpt-5.5-pro', label: 'GPT-5.5 Pro' },
     { value: 'gpt-5.4', label: 'GPT-5.4' },

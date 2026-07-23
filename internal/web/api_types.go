@@ -4,25 +4,32 @@ import "github.com/asheshgoplani/agent-deck/internal/session"
 
 // Error code constants for API error responses.
 const (
-	ErrCodeUnauthorized     = "UNAUTHORIZED"
-	ErrCodeForbidden        = "MUTATIONS_DISABLED"
-	ErrCodeCSRF             = "CROSS_ORIGIN_BLOCKED"
-	ErrCodeNotFound         = "NOT_FOUND"
-	ErrCodeBadRequest       = "INVALID_REQUEST"
-	ErrCodeMethodNotAllowed = "METHOD_NOT_ALLOWED"
-	ErrCodeRateLimited      = "RATE_LIMITED"
-	ErrCodeInternalError    = "INTERNAL_ERROR"
-	ErrCodeNotImplemented   = "NOT_IMPLEMENTED"
-	ErrCodeReadOnly         = "READ_ONLY"
+	ErrCodeUnauthorized        = "UNAUTHORIZED"
+	ErrCodeForbidden           = "MUTATIONS_DISABLED"
+	ErrCodeCSRF                = "CROSS_ORIGIN_BLOCKED"
+	ErrCodeNotFound            = "NOT_FOUND"
+	ErrCodeBadRequest          = "INVALID_REQUEST"
+	ErrCodeConflict            = "CONFLICT"
+	ErrCodeMethodNotAllowed    = "METHOD_NOT_ALLOWED"
+	ErrCodeRateLimited         = "RATE_LIMITED"
+	ErrCodeInternalError       = "INTERNAL_ERROR"
+	ErrCodeInsufficientStorage = "INSUFFICIENT_STORAGE"
+	ErrCodeNotImplemented      = "NOT_IMPLEMENTED"
+	ErrCodeReadOnly            = "READ_ONLY"
+	ErrCodeServiceUnavailable  = "SERVICE_UNAVAILABLE"
 )
 
 // CreateSessionRequest is the body for POST /api/sessions.
 type CreateSessionRequest struct {
-	Title       string `json:"title"`
-	Tool        string `json:"tool"`
-	ProjectPath string `json:"projectPath"`
-	GroupPath   string `json:"groupPath,omitempty"`
-	ModelID     string `json:"modelId,omitempty"`
+	Title        string `json:"title"`
+	Tool         string `json:"tool"`
+	ProjectPath  string `json:"projectPath"`
+	GroupPath    string `json:"groupPath,omitempty"`
+	ModelID      string `json:"modelId,omitempty"`
+	RemoteName   string `json:"remoteName,omitempty"`
+	Orchestrator string `json:"orchestrator,omitempty"`
+	Agent        string `json:"agent,omitempty"`
+	Runtime      string `json:"runtime,omitempty"`
 }
 
 // CreateGroupRequest is the body for POST /api/groups.

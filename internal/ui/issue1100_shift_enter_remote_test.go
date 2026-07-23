@@ -1,6 +1,10 @@
 package ui
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -82,7 +86,13 @@ func TestIssue1100_HomeDispatch_ShiftEnterRemoteCallsLauncher(t *testing.T) {
 	}
 
 	keyMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{shiftEnterMarker}}
-	_, _ = home.handleMainKey(keyMsg)
+	_, cmd := home.handleMainKey(keyMsg)
+	if cmd == nil {
+		t.Fatal("Shift+Enter on remote session did not schedule an async launcher command")
+	}
+	if err := (remoteOpenInNewWindowCmd{home: home, item: home.flatItems[0], openAs: "tab"}).Run(); err != nil {
+		t.Fatalf("remote open command failed: %v", err)
+	}
 
 	if !called {
 		t.Fatal("Shift+Enter on remote session did NOT call the new-window launcher (the #1100a regression)")
@@ -101,6 +111,121 @@ func TestIssue1100_HomeDispatch_ShiftEnterRemoteCallsLauncher(t *testing.T) {
 	}
 	if got, want := captured.Name, "remote-id-xyz"; got != want {
 		t.Errorf("AttachRequest.Name = %q, want %q (remote session id)", got, want)
+	}
+}
+
+func TestIssue1100_HomeDispatch_ShiftEnterAgentboxUsesWorkspaceAttachCommand(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/workspaces/ws-1/attach" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":                 "ws-1",
+			"status":             "running",
+			"attachCommand":      "ssh agentbox tmux attach -t ws-1-fresh",
+			"localAttachCommand": "tmux attach -t ws-1-fresh",
+		})
+	}))
+	defer srv.Close()
+
+	withTempAgentDeckHome(t, `
+[remotes.lab]
+kind = "agentbox"
+url = "`+srv.URL+`"
+`)
+
+	home := NewHome()
+	home.width = 120
+	home.height = 40
+	home.initialLoading = false
+	home.flatItems = []session.Item{{
+		Type:       session.ItemTypeRemoteSession,
+		RemoteName: "lab",
+		RemoteSession: &session.RemoteSessionInfo{
+			ID:                 "ws-1",
+			Title:              "research-one",
+			Status:             "running",
+			Attachable:         true,
+			AttachCommand:      "ssh agentbox tmux attach -t ws-1-stale",
+			LocalAttachCommand: "tmux attach -t ws-1-stale",
+		},
+	}}
+
+	var captured terminal.AttachRequest
+	var called bool
+	home.openInNewWindowSink = func(req terminal.AttachRequest) error {
+		called = true
+		captured = req
+		return nil
+	}
+
+	_, cmd := home.handleMainKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{shiftEnterMarker}})
+	if cmd == nil {
+		t.Fatal("Shift+Enter on Agentbox did not schedule an async launcher command")
+	}
+	if err := (remoteOpenInNewWindowCmd{home: home, item: home.flatItems[0], openAs: "tab"}).Run(); err != nil {
+		t.Fatalf("Agentbox open command failed: %v", err)
+	}
+
+	if !called {
+		t.Fatal("Shift+Enter on a running agentbox workspace must call the launcher")
+	}
+	if got, want := terminal.BuildAttachCommand(captured), "tmux attach -t ws-1-fresh"; got != want {
+		t.Fatalf("BuildAttachCommand() = %q, want %q", got, want)
+	}
+}
+
+func TestIssue1100_HomeDispatch_ShiftEnterAgentboxStoppedDoesNotLaunch(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/workspaces/ws-1/attach" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error":  "workspace_not_running",
+			"status": "stopped",
+		})
+	}))
+	defer srv.Close()
+
+	withTempAgentDeckHome(t, `
+[remotes.lab]
+kind = "agentbox"
+url = "`+srv.URL+`"
+`)
+
+	home := NewHome()
+	home.width = 120
+	home.height = 40
+	home.initialLoading = false
+	home.flatItems = []session.Item{{
+		Type:       session.ItemTypeRemoteSession,
+		RemoteName: "lab",
+		RemoteSession: &session.RemoteSessionInfo{
+			ID:                 "ws-1",
+			Title:              "research-one",
+			Status:             "running",
+			Attachable:         true,
+			AttachCommand:      "ssh agentbox tmux attach -t ws-1-stale",
+			LocalAttachCommand: "tmux attach -t ws-1-stale",
+		},
+	}}
+
+	home.openInNewWindowSink = func(req terminal.AttachRequest) error {
+		t.Fatalf("launcher should not run for a stopped agentbox workspace: %+v", req)
+		return nil
+	}
+
+	_, cmd := home.handleMainKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{shiftEnterMarker}})
+	if cmd == nil {
+		t.Fatal("Shift+Enter on stopped Agentbox did not schedule an async launcher command")
+	}
+	err := (remoteOpenInNewWindowCmd{home: home, item: home.flatItems[0], openAs: "tab"}).Run()
+	if err == nil {
+		t.Fatal("expected authoritative attach failure")
+	}
+	if !strings.Contains(err.Error(), "start it before attaching") {
+		t.Fatalf("error = %v, want stopped-before-attach guidance", err)
 	}
 }
 

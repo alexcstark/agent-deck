@@ -178,6 +178,230 @@ func TestIssue1353_SubmitRoutesToRemote(t *testing.T) {
 	}
 }
 
+func TestIssue1353_AgentboxRemoteDialogShowsExplicitWorkspaceFields(t *testing.T) {
+	withTempAgentDeckHome(t, `
+[remotes.lab]
+kind = "agentbox"
+url = "http://127.0.0.1:1"
+`)
+	home := NewHome()
+	home.width = 100
+	home.height = 30
+	home.flatItems = []session.Item{remoteGroupItem("lab")}
+	home.cursor = 0
+
+	h := pressN(t, home)
+	view := h.newDialog.View()
+	for _, want := range []string{"Orchestrator:", "Agent:", "Model ID:", "Runtime:", "Path:"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("agentbox remote dialog missing %q:\n%s", want, view)
+		}
+	}
+	if strings.Contains(view, "Command:") {
+		t.Fatalf("agentbox remote dialog should not render the SSH/local command picker:\n%s", view)
+	}
+}
+
+func TestIssue1353_AgentboxRemoteDialogRequiresExplicitFields(t *testing.T) {
+	withTempAgentDeckHome(t, `
+[remotes.lab]
+kind = "agentbox"
+url = "http://127.0.0.1:1"
+`)
+	home := NewHome()
+	home.width = 100
+	home.height = 30
+	home.flatItems = []session.Item{remoteGroupItem("lab")}
+	home.cursor = 0
+
+	h := pressN(t, home)
+	h.newDialog.nameInput.SetValue("research-one")
+	if got := h.newDialog.Validate(); !strings.Contains(strings.ToLower(got), "orchestrator") {
+		t.Fatalf("Validate() = %q, want explicit orchestrator guidance", got)
+	}
+}
+
+func TestIssue1353_AgentboxRemoteDialogUsesCanonicalAgentPlaceholderAndHelp(t *testing.T) {
+	withTempAgentDeckHome(t, `
+[remotes.lab]
+kind = "agentbox"
+url = "http://127.0.0.1:1"
+`)
+	home := NewHome()
+	home.width = 100
+	home.height = 30
+	home.flatItems = []session.Item{remoteGroupItem("lab")}
+	home.cursor = 0
+
+	h := pressN(t, home)
+	if got := h.newDialog.agentInput.Placeholder; got != "claude-code | codex | pi-fireworks" {
+		t.Fatalf("agent placeholder = %q, want canonical values", got)
+	}
+
+	h.newDialog.focusIndex = 2 // Name, Orchestrator, Agent
+	view := h.newDialog.View()
+	for _, want := range []string{"claude-code", "codex", "pi-fireworks"} {
+		if strings.Contains(view, want) {
+			continue
+		}
+		t.Fatalf("agent help text should show canonical value %q:\n%s", want, view)
+	}
+}
+
+func TestIssue1353_AgentboxRemoteDialogRejectsShorthandAgents(t *testing.T) {
+	withTempAgentDeckHome(t, `
+[remotes.lab]
+kind = "agentbox"
+url = "http://127.0.0.1:1"
+`)
+	tests := []struct {
+		name  string
+		agent string
+	}{
+		{name: "claude shorthand", agent: "claude"},
+		{name: "pi shorthand", agent: "pi"},
+		{name: "other value", agent: "gemini"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			home := NewHome()
+			home.width = 100
+			home.height = 30
+			home.flatItems = []session.Item{remoteGroupItem("lab")}
+			home.cursor = 0
+
+			h := pressN(t, home)
+			h.newDialog.nameInput.SetValue("research-one")
+			h.newDialog.orchestratorInput.SetValue("wisp")
+			h.newDialog.agentInput.SetValue(tt.agent)
+			h.newDialog.modelInput.SetValue("accounts/fireworks/models/glm-5p2")
+			h.newDialog.runtimeInput.SetValue("docker")
+
+			got := h.newDialog.Validate()
+			if !strings.Contains(got, "claude-code, codex, or pi-fireworks") {
+				t.Fatalf("Validate() = %q, want canonical-agent guidance", got)
+			}
+		})
+	}
+}
+
+func TestIssue1353_AgentboxRemoteDialogAcceptsCanonicalAgents(t *testing.T) {
+	withTempAgentDeckHome(t, `
+[remotes.lab]
+kind = "agentbox"
+url = "http://127.0.0.1:1"
+`)
+	tests := []string{"claude-code", "codex", "pi-fireworks"}
+
+	for _, agent := range tests {
+		t.Run(agent, func(t *testing.T) {
+			home := NewHome()
+			home.width = 100
+			home.height = 30
+			home.flatItems = []session.Item{remoteGroupItem("lab")}
+			home.cursor = 0
+
+			h := pressN(t, home)
+			h.newDialog.nameInput.SetValue("research-one")
+			h.newDialog.orchestratorInput.SetValue("wisp")
+			h.newDialog.agentInput.SetValue(agent)
+			h.newDialog.modelInput.SetValue("accounts/fireworks/models/glm-5p2")
+			h.newDialog.runtimeInput.SetValue("docker")
+
+			if got := h.newDialog.Validate(); got != "" {
+				t.Fatalf("Validate() = %q, want empty for canonical agent %q", got, agent)
+			}
+		})
+	}
+}
+
+func TestIssue1353_AgentboxRemoteDialogBuildsExplicitCreateOptions(t *testing.T) {
+	withTempAgentDeckHome(t, `
+[remotes.lab]
+kind = "agentbox"
+url = "http://127.0.0.1:1"
+`)
+	home := NewHome()
+	home.width = 100
+	home.height = 30
+	home.flatItems = []session.Item{remoteGroupItem("lab")}
+	home.cursor = 0
+
+	h := pressN(t, home)
+	h.newDialog.nameInput.SetValue("research-one")
+	h.newDialog.orchestratorInput.SetValue("wisp")
+	h.newDialog.agentInput.SetValue("pi-fireworks")
+	h.newDialog.modelInput.SetValue("accounts/fireworks/models/glm-5p2")
+	h.newDialog.runtimeInput.SetValue("docker")
+	h.newDialog.pathInput.SetValue("/srv/research")
+
+	opts := h.newDialog.GetRemoteCreateOptions()
+	if opts.Title != "research-one" || opts.Orchestrator != "wisp" || opts.Agent != "pi-fireworks" {
+		t.Fatalf("remote create identity fields = %+v", opts)
+	}
+	if opts.ModelID != "accounts/fireworks/models/glm-5p2" || opts.Runtime != "docker" || opts.Path != "/srv/research" {
+		t.Fatalf("remote create model/runtime/path fields = %+v", opts)
+	}
+	if opts.Tool != "" || opts.Group != "" {
+		t.Fatalf("agentbox remote create should not leak SSH/local defaults: %+v", opts)
+	}
+}
+
+func TestIssue1353_AgentboxRemoteDialogFromWorkspaceRow_DoesNotReuseWorkspacePath(t *testing.T) {
+	withTempAgentDeckHome(t, `
+[remotes.lab]
+kind = "agentbox"
+url = "http://127.0.0.1:1"
+`)
+	home := NewHome()
+	home.width = 100
+	home.height = 30
+	home.flatItems = []session.Item{{
+		Type:       session.ItemTypeRemoteSession,
+		RemoteName: "lab",
+		RemoteSession: &session.RemoteSessionInfo{
+			ID:         "ws-123",
+			Title:      "existing-workspace",
+			RemoteName: "lab",
+			Path:       "/srv/agentbox/workspaces/existing-workspace",
+		},
+	}}
+	home.cursor = 0
+
+	h := pressN(t, home)
+	_, path, _ := h.newDialog.GetValues()
+	if path != "" {
+		t.Fatalf("agentbox remote dialog path = %q, want empty so create cannot silently reuse the existing workspace root", path)
+	}
+}
+
+func TestIssue1353_AgentboxRemoteDialog_DoesNotPreselectConfiguredModel(t *testing.T) {
+	withTempAgentDeckHome(t, `
+default_tool = "claude"
+
+[claude]
+default_model = "claude-opus-4-7"
+
+[remotes.lab]
+kind = "agentbox"
+url = "http://127.0.0.1:1"
+`)
+	home := NewHome()
+	home.width = 100
+	home.height = 30
+	home.flatItems = []session.Item{remoteGroupItem("lab")}
+	home.cursor = 0
+
+	h := pressN(t, home)
+	if got := h.newDialog.modelInput.Value(); got != "" {
+		t.Fatalf("agentbox remote dialog modelInput = %q, want empty so model selection stays explicit", got)
+	}
+	if got := h.newDialog.GetRemoteCreateOptions().ModelID; got != "" {
+		t.Fatalf("agentbox remote create model = %q, want empty until the user explicitly selects one", got)
+	}
+}
+
 // TestIssue1353_LocalNUnaffected: `n` on a local group keeps the existing
 // behavior and must not leave any stale remote target around.
 func TestIssue1353_LocalNUnaffected(t *testing.T) {
