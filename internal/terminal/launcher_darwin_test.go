@@ -134,6 +134,7 @@ func TestBuildITerm2AppleScript_EscapesDoubleQuotes(t *testing.T) {
 func TestBuildWarpLaunchConfigUsesNativeTabCommand(t *testing.T) {
 	config, err := buildWarpLaunchConfig(AttachRequest{
 		Name:    "ci-perf1",
+		Label:   "Agent Deck · ci-perf1 · codex · gpt-5.6-luna",
 		Command: `ssh -t agentbox 'docker exec -it workspace tmux attach -t agentbox-ci-perf1'`,
 	})
 	if err != nil {
@@ -141,8 +142,8 @@ func TestBuildWarpLaunchConfigUsesNativeTabCommand(t *testing.T) {
 	}
 
 	for _, want := range []string{
-		`name = "Agent Deck ci-perf1"`,
-		`title = "ci-perf1"`,
+		`name = "Agent Deck · ci-perf1 · codex · gpt-5.6-luna"`,
+		`title = "Agent Deck · ci-perf1 · codex · gpt-5.6-luna"`,
 		`[[panes]]`,
 		`type = "terminal"`,
 		`commands = ["ssh -t agentbox 'docker exec -it workspace tmux attach -t agentbox-ci-perf1'"]`,

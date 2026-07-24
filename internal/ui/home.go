@@ -1038,6 +1038,7 @@ func buildRemoteAttachRequestForItem(ctx context.Context, item session.Item, ope
 		}
 		return terminal.AttachRequest{
 			Name:    item.RemoteSession.Title,
+			Label:   remoteSessionWarpLabel(*item.RemoteSession),
 			Command: intent.Command,
 			OpenAs:  openAs,
 		}, nil
@@ -1046,7 +1047,35 @@ func buildRemoteAttachRequestForItem(ctx context.Context, item session.Item, ope
 	if !ok {
 		return terminal.AttachRequest{}, fmt.Errorf("remote %q is unavailable", item.RemoteName)
 	}
+	req.Label = remoteSessionWarpLabel(*item.RemoteSession)
 	return req, nil
+}
+
+// remoteSessionWarpLabel gives Warp's native sidebar enough context to
+// identify an Agent Deck session without changing the command used to attach.
+// Keep it compact because Warp truncates long tab labels in its sidebar.
+func remoteSessionWarpLabel(rs session.RemoteSessionInfo) string {
+	parts := []string{"Agent Deck"}
+	if title := strings.TrimSpace(rs.Title); title != "" {
+		parts = append(parts, title)
+	}
+	agent := strings.TrimSpace(rs.Tool)
+	if agent == "" {
+		agent = strings.TrimSpace(rs.Agent)
+	}
+	switch agent {
+	case "claude-code":
+		agent = "claude"
+	case "pi-fireworks":
+		agent = "pi"
+	}
+	if agent != "" {
+		parts = append(parts, agent)
+	}
+	if model := strings.TrimSpace(rs.Model); model != "" {
+		parts = append(parts, model)
+	}
+	return strings.Join(parts, " · ")
 }
 
 func buildRemoteCreateAttachRequest(remoteName string, opts session.RemoteCreateOptions, result session.RemoteCreateResult, openAs string) (terminal.AttachRequest, error) {
@@ -1071,7 +1100,12 @@ func buildRemoteCreateAttachRequest(remoteName string, opts session.RemoteCreate
 		if err != nil {
 			return terminal.AttachRequest{}, err
 		}
-		return terminal.AttachRequest{Name: title, Command: intent.Command, OpenAs: openAs}, nil
+		return terminal.AttachRequest{
+			Name:    title,
+			Label:   remoteSessionWarpLabel(session.RemoteSessionInfo{Title: title, Agent: opts.Agent, Model: opts.ModelID}),
+			Command: intent.Command,
+			OpenAs:  openAs,
+		}, nil
 	}
 	req, ok := buildRemoteAttachRequest(remoteName, result.SessionID, openAs)
 	if !ok {
@@ -1079,6 +1113,7 @@ func buildRemoteCreateAttachRequest(remoteName string, opts session.RemoteCreate
 	}
 	req.Command = terminal.BuildAttachCommand(req)
 	req.Name = title
+	req.Label = remoteSessionWarpLabel(session.RemoteSessionInfo{Title: title, Agent: opts.Agent, Model: opts.ModelID})
 	return req, nil
 }
 

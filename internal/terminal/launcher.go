@@ -41,6 +41,11 @@ type AttachRequest struct {
 	// Remote != nil.
 	Name string
 
+	// Label is the human-readable title shown by native terminal launchers.
+	// It is independent from Name because remote AgentBox workspaces attach
+	// with an opaque command/session ID but should still be recognizable.
+	Label string
+
 	// SocketName is the optional `-L <socket>` selector. Empty means the
 	// default server. Ignored when Remote != nil.
 	SocketName string

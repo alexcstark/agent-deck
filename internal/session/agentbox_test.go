@@ -85,6 +85,27 @@ func TestAgentboxRunnerMeasureLatency_UsesHealthEndpoint(t *testing.T) {
 	}
 }
 
+func TestAgentboxRunnerFetchSessionPane_UsesPreviewEndpoint(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/workspaces/ws-1/preview" {
+			t.Fatalf("unexpected preview request: %s %s", r.Method, r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"content": "\x1b[32magent output\x1b[0m\n",
+		})
+	}))
+	defer srv.Close()
+
+	runner := NewAgentboxRunner("lab", RemoteConfig{Kind: RemoteKindAgentbox, URL: srv.URL})
+	content, err := runner.FetchSessionPane(context.Background(), "ws-1")
+	if err != nil {
+		t.Fatalf("FetchSessionPane unexpected error: %v", err)
+	}
+	if content != "\x1b[32magent output\x1b[0m\n" {
+		t.Fatalf("preview content = %q, want ANSI pane content", content)
+	}
+}
+
 func TestAgentboxRunnerCreateSession_RequiresExplicitFields(t *testing.T) {
 	runner := NewAgentboxRunner("lab", RemoteConfig{Kind: RemoteKindAgentbox, URL: "http://127.0.0.1:1"})
 
