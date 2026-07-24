@@ -1049,6 +1049,39 @@ func buildRemoteAttachRequestForItem(ctx context.Context, item session.Item, ope
 	return req, nil
 }
 
+func buildRemoteCreateAttachRequest(remoteName string, opts session.RemoteCreateOptions, result session.RemoteCreateResult, openAs string) (terminal.AttachRequest, error) {
+	if remoteName == "" || result.SessionID == "" {
+		return terminal.AttachRequest{}, fmt.Errorf("created remote session is unavailable")
+	}
+	cfg, err := session.LoadUserConfig()
+	if err != nil || cfg == nil || cfg.Remotes == nil {
+		return terminal.AttachRequest{}, fmt.Errorf("failed to load remote config")
+	}
+	rc, ok := cfg.Remotes[remoteName]
+	if !ok {
+		return terminal.AttachRequest{}, fmt.Errorf("remote %q is unavailable", remoteName)
+	}
+	title := strings.TrimSpace(opts.Title)
+	if title == "" {
+		title = result.SessionID
+	}
+	if rc.GetKind() == session.RemoteKindAgentbox {
+		runner := session.NewAgentboxRunner(remoteName, rc)
+		intent, err := runner.ResolveCreatedAttach(result)
+		if err != nil {
+			return terminal.AttachRequest{}, err
+		}
+		return terminal.AttachRequest{Name: title, Command: intent.Command, OpenAs: openAs}, nil
+	}
+	req, ok := buildRemoteAttachRequest(remoteName, result.SessionID, openAs)
+	if !ok {
+		return terminal.AttachRequest{}, fmt.Errorf("remote %q is unavailable", remoteName)
+	}
+	req.Command = terminal.BuildAttachCommand(req)
+	req.Name = title
+	return req, nil
+}
+
 func (h *Home) normalizeMainKey(pressed string) string {
 	// Shift+Enter relay: csiuReader emits the Private-Use rune
 	// shiftEnterMarker (U+E5E5) when it sees a Shift+Enter CSI u or
@@ -13081,6 +13114,7 @@ type remoteCreateAndAttachCmd struct {
 	runner     session.RemoteRunner
 	createOpts session.RemoteCreateOptions
 	createCtx  context.Context
+	onCreated  func(session.RemoteCreateResult) error
 }
 
 type createResultAttacher interface {
@@ -13109,6 +13143,9 @@ func (r remoteCreateAndAttachCmd) Run() error {
 	result, err := r.runner.CreateSession(ctx, r.createOpts)
 	if err != nil {
 		return err
+	}
+	if r.onCreated != nil {
+		return r.onCreated(result)
 	}
 	if attacher, ok := r.runner.(createResultAttacher); ok &&
 		(strings.TrimSpace(result.AttachCommand) != "" || strings.TrimSpace(result.LocalAttachCommand) != "") {
@@ -13146,11 +13183,21 @@ func (h *Home) createRemoteSessionWithOptions(remoteName string, opts session.Re
 	}
 	runner := session.NewRemoteRunner(remoteName, rc)
 	h.isAttaching.Store(true)
-	return tea.Exec(remoteCreateAndAttachCmd{
+	createCmd := remoteCreateAndAttachCmd{
 		runner:     runner,
 		createOpts: opts,
 		createCtx:  h.ctx,
-	}, func(err error) tea.Msg {
+	}
+	if shouldOpenRemoteAttachInWarp() {
+		createCmd.onCreated = func(result session.RemoteCreateResult) error {
+			req, err := buildRemoteCreateAttachRequest(remoteName, opts, result, "tab")
+			if err != nil {
+				return err
+			}
+			return h.openInNewWindow(req, true)
+		}
+	}
+	return tea.Exec(createCmd, func(err error) tea.Msg {
 		h.isAttaching.Store(false)
 		if err != nil {
 			var attachErr remoteAttachFailedError

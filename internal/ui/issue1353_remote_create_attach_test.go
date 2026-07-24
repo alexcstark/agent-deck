@@ -8,6 +8,7 @@ import (
 
 	"github.com/asheshgoplani/agent-deck/internal/costs"
 	"github.com/asheshgoplani/agent-deck/internal/session"
+	"github.com/asheshgoplani/agent-deck/internal/terminal"
 )
 
 type fakeRemoteCreateRunner struct {
@@ -103,5 +104,57 @@ func TestIssue1353_RemoteCreateAndAttachCmd_FallsBackToAttachForSSH(t *testing.T
 	}
 	if runner.attachCalls != 1 {
 		t.Fatalf("Attach calls = %d, want 1 for non-agentbox create results", runner.attachCalls)
+	}
+}
+
+func TestIssueWarpRemoteCreate_UsesNativeOpenCallback(t *testing.T) {
+	runner := &fakeRemoteCreateRunner{
+		createResult: session.RemoteCreateResult{
+			SessionID:     "ws-new",
+			Attachable:    true,
+			AttachCommand: "ssh agentbox tmux attach -t ws-new",
+		},
+	}
+
+	var opened session.RemoteCreateResult
+	err := (remoteCreateAndAttachCmd{
+		runner: runner,
+		onCreated: func(result session.RemoteCreateResult) error {
+			opened = result
+			return nil
+		},
+	}).Run()
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	if opened.SessionID != "ws-new" {
+		t.Fatalf("native open callback received %+v, want created result", opened)
+	}
+	if runner.attachedResult.SessionID != "" || runner.attachCalls != 0 {
+		t.Fatalf("native open path should not attach inline: attachedResult=%+v attachCalls=%d", runner.attachedResult, runner.attachCalls)
+	}
+}
+
+func TestIssueWarpRemoteCreate_BuildsNativeAgentboxAttachRequest(t *testing.T) {
+	withTempAgentDeckHome(t, `
+[remotes.lab]
+kind = "agentbox"
+url = "https://agentbox.example"
+`)
+
+	req, err := buildRemoteCreateAttachRequest("lab", session.RemoteCreateOptions{
+		Title: "research-one",
+	}, session.RemoteCreateResult{
+		SessionID:     "ws-new",
+		AttachCommand: "ssh agentbox tmux attach -t ws-new",
+	}, "tab")
+	if err != nil {
+		t.Fatalf("buildRemoteCreateAttachRequest returned error: %v", err)
+	}
+	if got, want := req.Name, "research-one"; got != want {
+		t.Fatalf("AttachRequest.Name = %q, want %q", got, want)
+	}
+	if got, want := terminal.BuildAttachCommand(req), "ssh agentbox tmux attach -t ws-new"; got != want {
+		t.Fatalf("BuildAttachCommand() = %q, want %q", got, want)
 	}
 }
