@@ -183,6 +183,8 @@ var agentboxModelEffortChoices = map[string][]string{
 	"pi-fireworks": {"default"},
 }
 
+var agentboxRuntimeChoices = []string{"docker", "tmux"}
+
 // NewDialog represents the new session creation dialog.
 type NewDialog struct {
 	nameInput             textinput.Model
@@ -198,6 +200,8 @@ type NewDialog struct {
 	modelEffortCursor     int
 	modelEffortActive     bool
 	runtimeInput          textinput.Model
+	runtimeCursor         int
+	runtimePickerActive   bool
 	claudeOptions         *ClaudeOptionsPanel // Claude-specific options (concrete for value extraction).
 	geminiOptions         *YoloOptionsPanel   // Gemini YOLO panel (concrete for value extraction).
 	codexOptions          *YoloOptionsPanel   // Codex YOLO panel (concrete for value extraction).
@@ -405,7 +409,7 @@ func NewNewDialog() *NewDialog {
 	modelInput.CharLimit = 128
 
 	runtimeInput := textinput.New()
-	runtimeInput.Placeholder = "docker | tmux"
+	runtimeInput.Placeholder = "docker"
 	runtimeInput.CharLimit = 64
 
 	// Create branch input for worktree
@@ -465,9 +469,11 @@ func (d *NewDialog) ShowInGroup(groupPath, groupName, defaultPath string, conduc
 	d.modelSuggestionActive = false
 	d.modelSuggestionHidden = false
 	d.modelNavigated = false
-	d.modelEffort = "default"
+	d.modelEffort = defaultAgentboxModelEffort("")
 	d.modelEffortCursor = 0
 	d.modelEffortActive = false
+	d.runtimeCursor = 0
+	d.runtimePickerActive = false
 	d.agentPickerCursor = 0
 	d.agentPickerActive = false
 	d.pathCycler.Reset()       // clear stale autocomplete matches from previous show
@@ -488,7 +494,7 @@ func (d *NewDialog) ShowInGroup(groupPath, groupName, defaultPath string, conduc
 	d.agentInput.Blur()
 	d.modelInput.SetValue("")
 	d.modelInput.Blur()
-	d.runtimeInput.SetValue("")
+	d.runtimeInput.SetValue("docker")
 	d.runtimeInput.Blur()
 	d.claudeOptions.Blur()
 	d.claudeOptions.ResetStartQuery() // #741: per-session query must not leak across openings
@@ -728,6 +734,10 @@ func (d *NewDialog) IsModelEffortPickerOpen() bool {
 	return d.isAgentboxRemoteMode() && d.currentTarget() == focusModelEffort && d.modelEffortActive
 }
 
+func (d *NewDialog) IsRuntimePickerOpen() bool {
+	return d.isAgentboxRemoteMode() && d.currentTarget() == focusRuntime && d.runtimePickerActive
+}
+
 func (d *NewDialog) IsModelTypeCustomHighlighted() bool {
 	return d.modelSuggestionActive && d.modelSuggestionCursor == 0
 }
@@ -737,6 +747,8 @@ func (d *NewDialog) shouldHandleEnterLocally() bool {
 	// Path/Model open their own dropdown on Enter.
 	case focusPath, focusModel, focusModelEffort:
 		return true
+	case focusRuntime:
+		return d.isAgentboxRemoteMode()
 	case focusAgent:
 		return d.isAgentboxRemoteMode()
 	// Name/Branch are free-text fields. When the opt-in
@@ -848,7 +860,7 @@ func (d *NewDialog) applyAgentboxAgentChoice() {
 		d.agentInput.SetCursor(len(choice.id))
 		d.modelInput.SetValue("")
 	}
-	d.modelEffort = "default"
+	d.modelEffort = defaultAgentboxModelEffort(choice.id)
 	d.modelEffortCursor = 0
 	d.modelEffortActive = false
 	d.agentPickerActive = false
@@ -857,6 +869,13 @@ func (d *NewDialog) applyAgentboxAgentChoice() {
 	d.modelSuggestionHidden = false
 	d.modelNavigated = false
 	d.filterModelSuggestions()
+}
+
+func defaultAgentboxModelEffort(agent string) string {
+	if strings.TrimSpace(agent) == "pi-fireworks" {
+		return "default"
+	}
+	return "high"
 }
 
 func agentboxModelEfforts(agent string) []string {
@@ -885,6 +904,27 @@ func (d *NewDialog) applyModelEffortChoice() {
 	}
 	d.modelEffort = choices[d.modelEffortCursor]
 	d.modelEffortActive = false
+}
+
+func (d *NewDialog) openRuntimePicker() {
+	d.runtimeCursor = 0
+	for i, choice := range agentboxRuntimeChoices {
+		if choice == d.runtimeInput.Value() {
+			d.runtimeCursor = i
+			break
+		}
+	}
+	d.runtimePickerActive = true
+	d.runtimeInput.Blur()
+}
+
+func (d *NewDialog) applyRuntimeChoice() {
+	if d.runtimeCursor < 0 || d.runtimeCursor >= len(agentboxRuntimeChoices) {
+		return
+	}
+	d.runtimeInput.SetValue(agentboxRuntimeChoices[d.runtimeCursor])
+	d.runtimeInput.SetCursor(len(d.runtimeInput.Value()))
+	d.runtimePickerActive = false
 }
 
 func (d *NewDialog) dismissAgentPicker() {
@@ -1712,6 +1752,7 @@ func (d *NewDialog) updateFocus() {
 	d.suggestionsHidden = false
 	d.agentPickerActive = false
 	d.modelEffortActive = false
+	d.runtimePickerActive = false
 	d.modelSuggestionActive = false
 	d.modelSuggestionHidden = false
 	switch d.currentTarget() {
@@ -1739,7 +1780,8 @@ func (d *NewDialog) updateFocus() {
 	case focusModelEffort:
 		// Picker-only field.
 	case focusRuntime:
-		d.runtimeInput.Focus()
+		// Agentbox runtimes come from the fixed picker; keeping this input blurred
+		// avoids presenting a text cursor for a field that rejects free text.
 	case focusWorktree, focusSandbox, focusConductor, focusInherited:
 		// Checkbox/toggle rows and conductor dropdown — no text input to focus.
 	case focusBranch:
@@ -1783,7 +1825,7 @@ func isNewDialogShiftTabKey(msg tea.KeyMsg) bool {
 // keystrokes. Single-letter shortcuts must be suppressed in this state.
 func (d *NewDialog) isTextInputFocused() bool {
 	switch d.currentTarget() {
-	case focusName, focusPath, focusOrchestrator, focusModel, focusRuntime, focusBranch:
+	case focusName, focusPath, focusOrchestrator, focusModel, focusBranch:
 		return true
 	case focusCommand:
 		return d.commandCursor == 0 // custom command input
@@ -1958,6 +2000,40 @@ func (d *NewDialog) Update(msg tea.Msg) (*NewDialog, tea.Cmd) {
 				return d, nil
 			case "left", "h", "esc":
 				d.modelEffortActive = false
+				return d, nil
+			}
+			return d, nil
+		}
+
+		if d.runtimePickerActive && d.currentTarget() == focusRuntime {
+			if isNewDialogTabKey(msg) {
+				d.runtimePickerActive = false
+				d.moveFocus(1)
+				return d, nil
+			}
+			if isNewDialogShiftTabKey(msg) {
+				d.runtimePickerActive = false
+				d.moveFocus(-1)
+				return d, nil
+			}
+			switch msg.String() {
+			case "down", "j", "ctrl+n":
+				d.runtimeCursor = (d.runtimeCursor + 1) % len(agentboxRuntimeChoices)
+				return d, nil
+			case "up", "k", "ctrl+p":
+				d.runtimeCursor--
+				if d.runtimeCursor < 0 {
+					d.runtimeCursor = len(agentboxRuntimeChoices) - 1
+				}
+				return d, nil
+			case " ", "enter":
+				d.applyRuntimeChoice()
+				if msg.String() == "enter" {
+					d.moveFocus(1)
+				}
+				return d, nil
+			case "left", "h", "esc":
+				d.runtimePickerActive = false
 				return d, nil
 			}
 			return d, nil
@@ -2318,6 +2394,10 @@ func (d *NewDialog) Update(msg tea.Msg) (*NewDialog, tea.Cmd) {
 				d.modelEffortActive = false
 				return d, nil
 			}
+			if d.runtimePickerActive {
+				d.runtimePickerActive = false
+				return d, nil
+			}
 			if d.IsModelPickerOpen() {
 				d.DismissModelSuggestions()
 				d.modelInput.Focus()
@@ -2380,6 +2460,10 @@ func (d *NewDialog) Update(msg tea.Msg) (*NewDialog, tea.Cmd) {
 			}
 			if cur == focusModelEffort && d.isAgentboxRemoteMode() {
 				d.openModelEffortPicker()
+				return d, nil
+			}
+			if cur == focusRuntime && d.isAgentboxRemoteMode() {
+				d.openRuntimePicker()
 				return d, nil
 			}
 			if cur == focusMultiRepo && d.multiRepoEnabled {
@@ -2521,6 +2605,10 @@ func (d *NewDialog) Update(msg tea.Msg) (*NewDialog, tea.Cmd) {
 				d.openModelEffortPicker()
 				return d, nil
 			}
+			if cur == focusRuntime && d.isAgentboxRemoteMode() {
+				d.openRuntimePicker()
+				return d, nil
+			}
 			if cur == focusWorktree {
 				d.ToggleWorktree()
 				d.rebuildFocusTargets()
@@ -2595,7 +2683,7 @@ func (d *NewDialog) Update(msg tea.Msg) (*NewDialog, tea.Cmd) {
 			d.filterModelSuggestions()
 		}
 	case focusRuntime:
-		d.runtimeInput, cmd = d.runtimeInput.Update(msg)
+		// Agentbox runtime is selected from the fixed dropdown above.
 	case focusModelEffort:
 		// Picker-only field.
 	case focusMultiRepo:
@@ -2778,6 +2866,40 @@ func (d *NewDialog) renderModelEffortSection(content *strings.Builder, cur focus
 			style := choiceStyle
 			prefix := "  "
 			if i == d.modelEffortCursor {
+				style = selectedStyle
+				prefix = "▶ "
+			}
+			menu.WriteString(style.Render(prefix + choice))
+		}
+		content.WriteString("\n")
+		content.WriteString(lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(ColorCyan).Background(menuBg).Padding(0, 1).Render(menu.String()))
+	}
+	content.WriteString("\n\n")
+}
+
+func (d *NewDialog) renderRuntimeSection(content *strings.Builder, cur focusTarget) {
+	labelStyle := lipgloss.NewStyle().Foreground(ColorText)
+	activeLabelStyle := lipgloss.NewStyle().Foreground(ColorCyan).Bold(true)
+	valueStyle := lipgloss.NewStyle().Foreground(ColorText)
+	if cur == focusRuntime {
+		content.WriteString(activeLabelStyle.Render("▶ Runtime:"))
+	} else {
+		content.WriteString(labelStyle.Render("  Runtime:"))
+	}
+	content.WriteString("\n  ")
+	content.WriteString(valueStyle.Render(d.runtimeInput.Value()))
+	if d.runtimePickerActive {
+		menuBg := dropdownMenuBg()
+		choiceStyle := lipgloss.NewStyle().Foreground(ColorComment).Background(menuBg)
+		selectedStyle := lipgloss.NewStyle().Foreground(ColorCyan).Bold(true).Background(menuBg)
+		var menu strings.Builder
+		for i, choice := range agentboxRuntimeChoices {
+			if i > 0 {
+				menu.WriteString("\n")
+			}
+			style := choiceStyle
+			prefix := "  "
+			if i == d.runtimeCursor {
 				style = selectedStyle
 				prefix = "▶ "
 			}
@@ -3027,7 +3149,7 @@ func (d *NewDialog) View() string {
 		d.renderAgentboxAgentSection(&content, cur, dialogWidth)
 		d.renderModelSection(&content, cur, dialogWidth)
 		d.renderModelEffortSection(&content, cur)
-		renderTextInputSection(&content, cur, focusRuntime, "Runtime:", d.runtimeInput)
+		d.renderRuntimeSection(&content, cur)
 		d.renderSinglePathSection(&content, cur, dialogWidth)
 	} else {
 		// Hot path (UX top-3 #3): Tool -> (Model) -> Path render right after Name.
@@ -3228,6 +3350,12 @@ func (d *NewDialog) View() string {
 			helpText = "↑/↓ navigate │ Space/Enter select │ Esc back │ Tab next"
 		} else {
 			helpText = "Enter choose effort │ Tab next │ ^S create │ Esc cancel"
+		}
+	} else if cur == focusRuntime && d.isAgentboxRemoteMode() {
+		if d.runtimePickerActive {
+			helpText = "↑/↓ navigate │ Space/Enter select │ Esc back │ Tab next"
+		} else {
+			helpText = "Enter choose runtime │ Tab next │ ^S create │ Esc cancel"
 		}
 	} else if cur == focusOrchestrator || cur == focusAgent || cur == focusRuntime {
 		helpText = "Tab next │ ^S create │ Esc cancel"
