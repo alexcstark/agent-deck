@@ -1036,7 +1036,11 @@ func buildRemoteAttachRequestForItem(ctx context.Context, item session.Item, ope
 		if err != nil {
 			return terminal.AttachRequest{}, err
 		}
-		return terminal.AttachRequest{Command: intent.Command, OpenAs: openAs}, nil
+		return terminal.AttachRequest{
+			Name:    item.RemoteSession.Title,
+			Command: intent.Command,
+			OpenAs:  openAs,
+		}, nil
 	}
 	req, ok := buildRemoteAttachRequest(item.RemoteName, item.RemoteSession.ID, openAs)
 	if !ok {
@@ -8257,6 +8261,11 @@ func (h *Home) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					}
 				}
 			} else if item.Type == session.ItemTypeRemoteSession && item.RemoteSession != nil {
+				// Warp owns the native tab when available; other terminals keep
+				// the existing inline attach behavior.
+				if shouldOpenRemoteAttachInWarp() {
+					return h, h.openRemoteSessionInNewWindow(item, "tab")
+				}
 				// Attach to remote session via SSH
 				return h, h.attachRemoteSession(item.RemoteName, item.RemoteSession.ID)
 			}
@@ -13171,6 +13180,10 @@ func (a attachWindowCmd) SetStdout(w io.Writer) {}
 func (a attachWindowCmd) SetStderr(w io.Writer) {}
 
 // attachRemoteSession attaches to a remote session, suspending the TUI.
+func shouldOpenRemoteAttachInWarp() bool {
+	return runtime.GOOS == "darwin" && tmux.DetectTerminal() == "warp"
+}
+
 func (h *Home) attachRemoteSession(remoteName, sessionID string) tea.Cmd {
 	config, err := session.LoadUserConfig()
 	if err != nil || config == nil || config.Remotes == nil {

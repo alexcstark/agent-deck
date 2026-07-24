@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -114,6 +115,38 @@ func TestIssue1100_HomeDispatch_ShiftEnterRemoteCallsLauncher(t *testing.T) {
 	}
 }
 
+func TestHomeDispatch_EnterRemoteUsesNativeWarpTab(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("native Warp tab launching is macOS-only")
+	}
+	t.Setenv("TERM_PROGRAM", "WarpTerminal")
+	t.Setenv("WARP_IS_LOCAL_SHELL_SESSION", "1")
+	if !shouldOpenRemoteAttachInWarp() {
+		t.Fatal("Warp terminal should use the native remote attach path")
+	}
+	home := armHomeWithOneRemoteSession(t)
+
+	var called bool
+	home.openInNewWindowSink = func(req terminal.AttachRequest) error {
+		called = true
+		if req.Name != "remote-id-xyz" {
+			t.Fatalf("AttachRequest.Name = %q, want remote-id-xyz", req.Name)
+		}
+		return nil
+	}
+
+	_, cmd := home.handleMainKey(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("Enter on remote Warp session did not schedule an attach command")
+	}
+	if err := (remoteOpenInNewWindowCmd{home: home, item: home.flatItems[0], openAs: "tab"}).Run(); err != nil {
+		t.Fatalf("native Warp attach failed: %v", err)
+	}
+	if !called {
+		t.Fatal("Enter on a remote session in Warp should use the native terminal launcher")
+	}
+}
+
 func TestIssue1100_HomeDispatch_ShiftEnterAgentboxUsesWorkspaceAttachCommand(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/v1/workspaces/ws-1/attach" {
@@ -169,6 +202,9 @@ url = "`+srv.URL+`"
 
 	if !called {
 		t.Fatal("Shift+Enter on a running agentbox workspace must call the launcher")
+	}
+	if got, want := captured.Name, "research-one"; got != want {
+		t.Fatalf("AttachRequest.Name = %q, want workspace title %q", got, want)
 	}
 	if got, want := terminal.BuildAttachCommand(captured), "tmux attach -t ws-1-fresh"; got != want {
 		t.Fatalf("BuildAttachCommand() = %q, want %q", got, want)
