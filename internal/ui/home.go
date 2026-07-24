@@ -7293,7 +7293,7 @@ func (h *Home) handleNewDialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return h, cmd
 	}
 
-	if h.newDialog.IsAgentPickerOpen() || h.newDialog.IsModelEffortPickerOpen() {
+	if h.newDialog.IsAgentPickerOpen() || h.newDialog.IsModelEffortPickerOpen() || h.newDialog.IsRuntimePickerOpen() {
 		var cmd tea.Cmd
 		h.newDialog, cmd = h.newDialog.Update(msg)
 		return h, cmd
@@ -7472,7 +7472,7 @@ func (h *Home) handleNewDialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// picker and keeps the new-session form alive (focus stays on the model
 		// field) rather than cancelling the whole flow. Forward to the dialog so
 		// its picker-level Esc handler runs.
-		if h.newDialog.IsModelPickerOpen() || h.newDialog.IsModelEffortPickerOpen() {
+		if h.newDialog.IsModelPickerOpen() || h.newDialog.IsModelEffortPickerOpen() || h.newDialog.IsRuntimePickerOpen() {
 			var cmd tea.Cmd
 			h.newDialog, cmd = h.newDialog.Update(msg)
 			return h, cmd
