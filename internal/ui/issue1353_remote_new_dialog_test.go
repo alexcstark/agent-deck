@@ -226,6 +226,31 @@ func TestIssue1353_AgentboxModelEffortPickerTracksAgent(t *testing.T) {
 	}
 }
 
+func TestIssue1353_AgentboxDefaultsToHighEffortAndDockerRuntimePicker(t *testing.T) {
+	d := NewNewDialog()
+	d.SetRemoteMode(session.RemoteKindAgentbox)
+	d.Show()
+
+	if d.modelEffort != "high" {
+		t.Fatalf("new Agentbox dialog model effort = %q, want high", d.modelEffort)
+	}
+	if got := d.runtimeInput.Value(); got != "docker" {
+		t.Fatalf("new Agentbox dialog runtime = %q, want docker", got)
+	}
+
+	d.focusIndex = d.indexOf(focusRuntime)
+	d.updateFocus()
+	d, _ = d.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !d.IsRuntimePickerOpen() {
+		t.Fatal("runtime picker should open from the runtime field")
+	}
+	d, _ = d.Update(tea.KeyMsg{Type: tea.KeyDown})
+	d, _ = d.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if got := d.runtimeInput.Value(); got != "tmux" {
+		t.Fatalf("runtime dropdown selection = %q, want tmux after one down key", got)
+	}
+}
+
 func TestIssue1353_AgentboxRemoteDialogRequiresExplicitFields(t *testing.T) {
 	withTempAgentDeckHome(t, `
 [remotes.lab]
