@@ -758,10 +758,10 @@ func (d *NewDialog) shouldHandleEnterLocally() bool {
 	// skipping path/tool/model selection entirely. Handling Enter locally lets
 	// the dialog advance focus instead. Submit stays reachable from non-text
 	// rows (checkboxes/conductor) and via Ctrl+S (additive, always available).
-	// Default (toggle off) preserves today's behavior: Enter here submits, so we
-	// must NOT claim it locally.
+	// Default (toggle off) preserves today's behavior for local sessions. AgentBox
+	// always keeps Enter as navigation so Ctrl+S remains the explicit submit key.
 	case focusName, focusBranch:
-		return d.enterAdvances
+		return d.enterAdvances || d.isAgentboxRemoteMode()
 	case focusMultiRepo:
 		return d.multiRepoEnabled
 	default:
@@ -2411,10 +2411,9 @@ func (d *NewDialog) Update(msg tea.Msg) (*NewDialog, tea.Cmd) {
 			// [ui].new_session_enter_advances toggle is on, Enter advances to the
 			// next field instead of submitting the form, so typing a name + Enter
 			// no longer silently creates a session with all defaults. With the
-			// toggle off (default) home.go never forwards Enter here for these
-			// fields (shouldHandleEnterLocally returns false), so this branch is
-			// only reached in opt-in mode; the guard keeps it correct regardless.
-			if d.enterAdvances && (cur == focusName || cur == focusBranch) {
+			// For local sessions with the toggle off, home.go never forwards Enter
+			// here for these fields. AgentBox always forwards it for navigation.
+			if (d.enterAdvances || d.isAgentboxRemoteMode()) && (cur == focusName || cur == focusBranch) {
 				d.moveFocus(1)
 				return d, nil
 			}
@@ -3306,10 +3305,11 @@ func (d *NewDialog) View() string {
 		recentPrefix = "^R recent │ "
 	}
 	// createHint reflects the active Enter mode on free-text fields. With the
-	// opt-in toggle on, Enter advances and Ctrl+S creates; with it off (default),
-	// Enter still creates (Ctrl+S also works, but Enter is the legacy primary).
+	// With the opt-in toggle on, Enter advances and Ctrl+S creates. AgentBox
+	// always uses that explicit-submit behavior; local sessions retain the
+	// legacy Enter-to-create default when the toggle is off.
 	createHint := "Enter create"
-	if d.enterAdvances {
+	if d.enterAdvances || d.isAgentboxRemoteMode() {
 		createHint = "^S create"
 	}
 	helpText := recentPrefix + "Tab next │ ↑↓ navigate │ " + createHint + " │ Esc cancel"
@@ -3327,7 +3327,7 @@ func (d *NewDialog) View() string {
 	} else if cur == focusBranch {
 		if d.branchPicker != nil && d.branchPicker.IsVisible() {
 			helpText = "Type filter │ ↑↓ navigate │ Enter select │ Esc close"
-		} else if d.enterAdvances {
+		} else if d.enterAdvances || d.isAgentboxRemoteMode() {
 			helpText = "^F branch search │ Tab/Enter next │ ^S create │ Esc cancel"
 		} else {
 			helpText = "^F branch search │ Tab next │ Enter create │ Esc cancel"

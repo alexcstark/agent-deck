@@ -26,6 +26,26 @@ func TestNewNewDialog(t *testing.T) {
 	}
 }
 
+func TestNewDialog_AgentboxEnterNeverSubmits(t *testing.T) {
+	d := NewNewDialog()
+	d.SetRemoteMode(session.RemoteKindAgentbox)
+	d.enterAdvances = false // Agentbox workspaces always use the explicit submit key.
+	d.SetSize(100, 50)
+	d.Show()
+
+	if d.currentTarget() != focusName {
+		t.Fatalf("focus = %v, want focusName", d.currentTarget())
+	}
+	if !d.shouldHandleEnterLocally() {
+		t.Fatal("Agentbox Enter should advance locally instead of submitting")
+	}
+	before := d.currentTarget()
+	d, _ = d.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if d.currentTarget() == before {
+		t.Fatalf("Agentbox Enter did not advance focus (still %v)", before)
+	}
+}
+
 func TestDialogVisibility(t *testing.T) {
 	d := NewNewDialog()
 
