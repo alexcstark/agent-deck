@@ -13179,11 +13179,11 @@ func (a attachWindowCmd) SetStdin(r io.Reader)  {}
 func (a attachWindowCmd) SetStdout(w io.Writer) {}
 func (a attachWindowCmd) SetStderr(w io.Writer) {}
 
-// attachRemoteSession attaches to a remote session, suspending the TUI.
 func shouldOpenRemoteAttachInWarp() bool {
 	return runtime.GOOS == "darwin" && tmux.DetectTerminal() == "warp"
 }
 
+// attachRemoteSession attaches to a remote session, suspending the TUI.
 func (h *Home) attachRemoteSession(remoteName, sessionID string) tea.Cmd {
 	config, err := session.LoadUserConfig()
 	if err != nil || config == nil || config.Remotes == nil {
