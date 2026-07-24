@@ -4,7 +4,10 @@ package terminal
 
 import (
 	"fmt"
+	"net/url"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -21,8 +24,81 @@ func OpenSessionInNewWindow(req AttachRequest) error {
 	if cmd == "" {
 		return fmt.Errorf("terminal: empty attach command (missing session name or remote host)")
 	}
+	if isWarpTerminal() {
+		return openWarpLaunchConfig(req)
+	}
 	script := buildITerm2AppleScript(cmd, req.OpenAs)
 	return exec.Command("osascript", "-e", script).Run()
+}
+
+func isWarpTerminal() bool {
+	return os.Getenv("TERM_PROGRAM") == "WarpTerminal" || os.Getenv("WARP_IS_LOCAL_SHELL_SESSION") != ""
+}
+
+func buildWarpLaunchConfig(req AttachRequest) (string, error) {
+	command := BuildAttachCommand(req)
+	if command == "" {
+		return "", fmt.Errorf("terminal: empty attach command")
+	}
+	if strings.ContainsAny(command, "\r\n") {
+		return "", fmt.Errorf("terminal: attach command must be single-line")
+	}
+
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		name = "remote-session"
+	}
+	if strings.ContainsAny(name, "\r\n") {
+		return "", fmt.Errorf("terminal: session name must be single-line")
+	}
+
+	quotedName := warpYAMLString("Agent Deck " + name)
+	quotedTitle := warpYAMLString(name)
+	quotedCommand := warpYAMLString(command)
+	return fmt.Sprintf("---\nname: %s\nwindows:\n  - tabs:\n      - title: %s\n        layout:\n          commands:\n            - exec: %s\n", quotedName, quotedTitle, quotedCommand), nil
+}
+
+func warpYAMLString(value string) string {
+	value = strings.ReplaceAll(value, `\`, `\\`)
+	value = strings.ReplaceAll(value, `"`, `\"`)
+	return `"` + value + `"`
+}
+
+func openWarpLaunchConfig(req AttachRequest) error {
+	config, err := buildWarpLaunchConfig(req)
+	if err != nil {
+		return err
+	}
+
+	dir := filepath.Join(os.TempDir(), "agent-deck-warp-launch")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("terminal: create Warp launch directory: %w", err)
+	}
+	file, err := os.CreateTemp(dir, "attach-*.yaml")
+	if err != nil {
+		return fmt.Errorf("terminal: create Warp launch config: %w", err)
+	}
+	path := file.Name()
+	if err := file.Chmod(0o600); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("terminal: protect Warp launch config: %w", err)
+	}
+	if _, err := file.WriteString(config); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("terminal: write Warp launch config: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("terminal: close Warp launch config: %w", err)
+	}
+
+	uri := "warp://launch/" + url.PathEscape(path)
+	if err := exec.Command("open", uri).Run(); err != nil {
+		return fmt.Errorf("terminal: open Warp launch config: %w", err)
+	}
+
+	// Warp reads the launch file while handling the URI. Keep it around for
+	// the current launch; the temporary directory is safe to reap later.
+	return nil
 }
 
 // OpenSessionInSplitPane opens a new iTerm2 vertical split pane next to the

@@ -130,3 +130,29 @@ func TestBuildITerm2AppleScript_EscapesDoubleQuotes(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildWarpLaunchConfigUsesNativeTabCommand(t *testing.T) {
+	config, err := buildWarpLaunchConfig(AttachRequest{
+		Name:    "ci-perf1",
+		Command: `ssh -t agentbox 'docker exec -it workspace tmux attach -t agentbox-ci-perf1'`,
+	})
+	if err != nil {
+		t.Fatalf("buildWarpLaunchConfig returned error: %v", err)
+	}
+
+	for _, want := range []string{
+		`name: "Agent Deck ci-perf1"`,
+		`title: "ci-perf1"`,
+		`exec: "ssh -t agentbox 'docker exec -it workspace tmux attach -t agentbox-ci-perf1'"`,
+	} {
+		if !strings.Contains(config, want) {
+			t.Errorf("Warp launch config missing %q\nfull config:\n%s", want, config)
+		}
+	}
+}
+
+func TestBuildWarpLaunchConfigRejectsMultilineCommand(t *testing.T) {
+	if _, err := buildWarpLaunchConfig(AttachRequest{Command: "ssh agentbox\nrm -rf"}); err == nil {
+		t.Fatal("buildWarpLaunchConfig should reject multiline commands")
+	}
+}
