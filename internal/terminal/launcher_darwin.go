@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -52,16 +53,12 @@ func buildWarpLaunchConfig(req AttachRequest) (string, error) {
 		return "", fmt.Errorf("terminal: session name must be single-line")
 	}
 
-	quotedName := warpYAMLString("Agent Deck " + name)
-	quotedTitle := warpYAMLString(name)
-	quotedCommand := warpYAMLString(command)
-	return fmt.Sprintf("---\nname: %s\nwindows:\n  - tabs:\n      - title: %s\n        layout:\n          commands:\n            - exec: %s\n", quotedName, quotedTitle, quotedCommand), nil
-}
-
-func warpYAMLString(value string) string {
-	value = strings.ReplaceAll(value, `\`, `\\`)
-	value = strings.ReplaceAll(value, `"`, `\"`)
-	return `"` + value + `"`
+	return fmt.Sprintf(
+		"name = %s\ntitle = %s\n\n[[panes]]\nid = \"main\"\ntype = \"terminal\"\ncommands = [%s]\nis_focused = true\n",
+		strconv.Quote("Agent Deck "+name),
+		strconv.Quote(name),
+		strconv.Quote(command),
+	), nil
 }
 
 func openWarpLaunchConfig(req AttachRequest) error {
@@ -70,34 +67,39 @@ func openWarpLaunchConfig(req AttachRequest) error {
 		return err
 	}
 
-	dir := filepath.Join(os.TempDir(), "agent-deck-warp-launch")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("terminal: create Warp launch directory: %w", err)
-	}
-	file, err := os.CreateTemp(dir, "attach-*.yaml")
+	home, err := os.UserHomeDir()
 	if err != nil {
-		return fmt.Errorf("terminal: create Warp launch config: %w", err)
+		return fmt.Errorf("terminal: resolve Warp config directory: %w", err)
+	}
+	dir := filepath.Join(home, ".warp", "tab_configs")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("terminal: create Warp tab config directory: %w", err)
+	}
+	file, err := os.CreateTemp(dir, "agent-deck-remote-*.toml")
+	if err != nil {
+		return fmt.Errorf("terminal: create Warp tab config: %w", err)
 	}
 	path := file.Name()
 	if err := file.Chmod(0o600); err != nil {
 		_ = file.Close()
-		return fmt.Errorf("terminal: protect Warp launch config: %w", err)
+		return fmt.Errorf("terminal: protect Warp tab config: %w", err)
 	}
 	if _, err := file.WriteString(config); err != nil {
 		_ = file.Close()
-		return fmt.Errorf("terminal: write Warp launch config: %w", err)
+		return fmt.Errorf("terminal: write Warp tab config: %w", err)
 	}
 	if err := file.Close(); err != nil {
-		return fmt.Errorf("terminal: close Warp launch config: %w", err)
+		return fmt.Errorf("terminal: close Warp tab config: %w", err)
 	}
 
-	uri := "warp://launch/" + url.PathEscape(path)
+	name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	uri := "warp://tab_config/" + url.PathEscape(name)
 	if err := exec.Command("open", uri).Run(); err != nil {
-		return fmt.Errorf("terminal: open Warp launch config: %w", err)
+		return fmt.Errorf("terminal: open Warp tab config: %w", err)
 	}
 
-	// Warp reads the launch file while handling the URI. Keep it around for
-	// the current launch; the temporary directory is safe to reap later.
+	// Warp resolves the config by filename from ~/.warp/tab_configs. Keep it
+	// around so the URI can be resolved after `open` returns.
 	return nil
 }
 

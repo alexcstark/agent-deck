@@ -141,12 +141,14 @@ func TestBuildWarpLaunchConfigUsesNativeTabCommand(t *testing.T) {
 	}
 
 	for _, want := range []string{
-		`name: "Agent Deck ci-perf1"`,
-		`title: "ci-perf1"`,
-		`exec: "ssh -t agentbox 'docker exec -it workspace tmux attach -t agentbox-ci-perf1'"`,
+		`name = "Agent Deck ci-perf1"`,
+		`title = "ci-perf1"`,
+		`[[panes]]`,
+		`type = "terminal"`,
+		`commands = ["ssh -t agentbox 'docker exec -it workspace tmux attach -t agentbox-ci-perf1'"]`,
 	} {
 		if !strings.Contains(config, want) {
-			t.Errorf("Warp launch config missing %q\nfull config:\n%s", want, config)
+			t.Errorf("Warp tab config missing %q\nfull config:\n%s", want, config)
 		}
 	}
 }
