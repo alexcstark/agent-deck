@@ -118,6 +118,10 @@ type agentboxAttachResponse struct {
 	LocalAttachCommand string `json:"localAttachCommand"`
 }
 
+type agentboxPreviewResponse struct {
+	Content string `json:"content"`
+}
+
 type agentboxErrorResponse struct {
 	Error   string `json:"error"`
 	Status  string `json:"status"`
@@ -155,11 +159,19 @@ func (r *AgentboxRunner) FetchSessions(ctx context.Context) ([]RemoteSessionInfo
 }
 
 func (r *AgentboxRunner) FetchSessionOutput(ctx context.Context, sessionID string) (string, error) {
-	return "", fmt.Errorf("agentbox remote preview is unavailable for workspace %s", sessionID)
+	return r.fetchSessionPreview(ctx, sessionID)
 }
 
 func (r *AgentboxRunner) FetchSessionPane(ctx context.Context, sessionID string) (string, error) {
-	return "", fmt.Errorf("agentbox remote pane preview is unavailable for workspace %s", sessionID)
+	return r.fetchSessionPreview(ctx, sessionID)
+}
+
+func (r *AgentboxRunner) fetchSessionPreview(ctx context.Context, sessionID string) (string, error) {
+	var response agentboxPreviewResponse
+	if err := r.doJSON(ctx, http.MethodGet, fmt.Sprintf("/v1/workspaces/%s/preview", url.PathEscape(sessionID)), nil, &response); err != nil {
+		return "", err
+	}
+	return response.Content, nil
 }
 
 func (r *AgentboxRunner) FetchCostSummary(ctx context.Context) (*costs.RemoteCostSummary, error) {

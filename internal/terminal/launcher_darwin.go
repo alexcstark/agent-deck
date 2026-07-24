@@ -52,11 +52,18 @@ func buildWarpLaunchConfig(req AttachRequest) (string, error) {
 	if strings.ContainsAny(name, "\r\n") {
 		return "", fmt.Errorf("terminal: session name must be single-line")
 	}
+	label := strings.TrimSpace(req.Label)
+	if label == "" {
+		label = "Agent Deck · " + name
+	}
+	if strings.ContainsAny(label, "\r\n") {
+		return "", fmt.Errorf("terminal: session label must be single-line")
+	}
 
 	return fmt.Sprintf(
 		"name = %s\ntitle = %s\n\n[[panes]]\nid = \"main\"\ntype = \"terminal\"\ncommands = [%s]\nis_focused = true\n",
-		strconv.Quote("Agent Deck "+name),
-		strconv.Quote(name),
+		strconv.Quote(label),
+		strconv.Quote(label),
 		strconv.Quote(command),
 	), nil
 }
