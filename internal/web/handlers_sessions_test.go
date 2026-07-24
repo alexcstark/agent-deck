@@ -275,7 +275,7 @@ func TestSessionsCollectionPOSTRemoteAgentboxCreatesWorkspace(t *testing.T) {
 	})
 	srv.menuData = &fakeMenuDataLoader{snapshot: &MenuSnapshot{}}
 
-	body := strings.NewReader(`{"remoteName":"lab","title":"Research One","projectPath":"/srv/research","orchestrator":"wisp","agent":"pi-fireworks","modelId":"accounts/fireworks/models/glm-5p2","runtime":"docker"}`)
+	body := strings.NewReader(`{"remoteName":"lab","title":"Research One","projectPath":"/srv/research","orchestrator":"wisp","agent":"pi-fireworks","modelId":"accounts/fireworks/models/glm-5p2","modelEffort":"default","runtime":"docker"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/sessions", body)
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()

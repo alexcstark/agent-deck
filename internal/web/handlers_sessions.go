@@ -100,6 +100,7 @@ func (s *Server) handleSessionsCollection(w http.ResponseWriter, r *http.Request
 				Path:         req.ProjectPath,
 				Group:        req.GroupPath,
 				ModelID:      req.ModelID,
+				ModelEffort:  req.ModelEffort,
 				Orchestrator: req.Orchestrator,
 				Agent:        req.Agent,
 				Runtime:      req.Runtime,

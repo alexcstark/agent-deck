@@ -39,6 +39,7 @@ type RemoteCreateOptions struct {
 	Path         string
 	Group        string
 	ModelID      string
+	ModelEffort  string
 	Orchestrator string
 	Agent        string
 	Runtime      string
@@ -199,6 +200,9 @@ func (r *AgentboxRunner) CreateSession(ctx context.Context, opts RemoteCreateOpt
 		"agent":        strings.TrimSpace(opts.Agent),
 		"model":        strings.TrimSpace(opts.ModelID),
 		"runtime":      strings.TrimSpace(opts.Runtime),
+	}
+	if effort := strings.TrimSpace(opts.ModelEffort); effort != "" && effort != "default" {
+		payload["modelEffort"] = effort
 	}
 	if cwd := strings.TrimSpace(opts.Path); cwd != "" && cwd != "." {
 		payload["cwd"] = cwd
