@@ -192,13 +192,37 @@ url = "http://127.0.0.1:1"
 
 	h := pressN(t, home)
 	view := h.newDialog.View()
-	for _, want := range []string{"Orchestrator:", "Agent:", "Model ID:", "Runtime:", "Path:"} {
+	for _, want := range []string{"Orchestrator:", "Agent:", "Model ID:", "Model effort:", "Runtime:", "Path:"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("agentbox remote dialog missing %q:\n%s", want, view)
 		}
 	}
 	if strings.Contains(view, "Command:") {
 		t.Fatalf("agentbox remote dialog should not render the SSH/local command picker:\n%s", view)
+	}
+}
+
+func TestIssue1353_AgentboxModelEffortPickerTracksAgent(t *testing.T) {
+	d := NewNewDialog()
+	d.SetRemoteMode(session.RemoteKindAgentbox)
+	d.agentInput.SetValue("codex")
+	d.modelEffort = "default"
+	d.focusIndex = d.indexOf(focusModelEffort)
+	d.visible = true
+	if _, _ = d.Update(tea.KeyMsg{Type: tea.KeyEnter}); !d.modelEffortActive {
+		t.Fatal("model effort picker should open from the effort field")
+	}
+	view := d.View()
+	for _, want := range []string{"default", "low", "medium", "high", "xhigh"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("codex effort picker missing %q:\n%s", want, view)
+		}
+	}
+	d.agentInput.SetValue("pi-fireworks")
+	d.modelEffortActive = false
+	d.openModelEffortPicker()
+	if got := len(agentboxModelEfforts("pi-fireworks")); got != 1 {
+		t.Fatalf("pi should expose only default effort, got %d choices", got)
 	}
 }
 
@@ -333,6 +357,7 @@ url = "http://127.0.0.1:1"
 	h.newDialog.orchestratorInput.SetValue("wisp")
 	h.newDialog.agentInput.SetValue("pi-fireworks")
 	h.newDialog.modelInput.SetValue("accounts/fireworks/models/glm-5p2")
+	h.newDialog.modelEffort = "high"
 	h.newDialog.runtimeInput.SetValue("docker")
 	h.newDialog.pathInput.SetValue("/srv/research")
 
@@ -340,7 +365,7 @@ url = "http://127.0.0.1:1"
 	if opts.Title != "research-one" || opts.Orchestrator != "wisp" || opts.Agent != "pi-fireworks" {
 		t.Fatalf("remote create identity fields = %+v", opts)
 	}
-	if opts.ModelID != "accounts/fireworks/models/glm-5p2" || opts.Runtime != "docker" || opts.Path != "/srv/research" {
+	if opts.ModelID != "accounts/fireworks/models/glm-5p2" || opts.ModelEffort != "high" || opts.Runtime != "docker" || opts.Path != "/srv/research" {
 		t.Fatalf("remote create model/runtime/path fields = %+v", opts)
 	}
 	if opts.Tool != "" || opts.Group != "" {

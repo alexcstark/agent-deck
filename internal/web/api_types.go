@@ -26,6 +26,7 @@ type CreateSessionRequest struct {
 	ProjectPath  string `json:"projectPath"`
 	GroupPath    string `json:"groupPath,omitempty"`
 	ModelID      string `json:"modelId,omitempty"`
+	ModelEffort  string `json:"modelEffort,omitempty"`
 	RemoteName   string `json:"remoteName,omitempty"`
 	Orchestrator string `json:"orchestrator,omitempty"`
 	Agent        string `json:"agent,omitempty"`
